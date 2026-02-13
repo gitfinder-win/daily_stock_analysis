@@ -284,12 +284,18 @@ class Config:
         serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '')
         serpapi_keys = [k.strip() for k in serpapi_keys_str.split(',') if k.strip()]
         
+        # 支持自定义环境变量名（兼容用户配置）
+        tushare_token = os.getenv('TUSHARE_TOKEN') or os.getenv('TU_KEY')
+        openai_api_key = os.getenv('OPENAI_API_KEY') or os.getenv('NV_KEY')
+        # NVIDIA API 默认 base URL
+        openai_base_url = os.getenv('OPENAI_BASE_URL') or os.getenv('NV_BASE') or 'https://integrate.api.nvidia.com/v1/'
+
         return cls(
             stock_list=stock_list,
             feishu_app_id=os.getenv('FEISHU_APP_ID'),
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
-            tushare_token=os.getenv('TUSHARE_TOKEN'),
+            tushare_token=tushare_token,
             gemini_api_key=os.getenv('GEMINI_API_KEY'),
             gemini_model=os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview'),
             gemini_model_fallback=os.getenv('GEMINI_MODEL_FALLBACK', 'gemini-2.5-flash'),
@@ -297,8 +303,8 @@ class Config:
             gemini_request_delay=float(os.getenv('GEMINI_REQUEST_DELAY', '2.0')),
             gemini_max_retries=int(os.getenv('GEMINI_MAX_RETRIES', '5')),
             gemini_retry_delay=float(os.getenv('GEMINI_RETRY_DELAY', '5.0')),
-            openai_api_key=os.getenv('OPENAI_API_KEY'),
-            openai_base_url=os.getenv('OPENAI_BASE_URL'),
+            openai_api_key=openai_api_key,
+            openai_base_url=openai_base_url,
             openai_model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
             openai_temperature=float(os.getenv('OPENAI_TEMPERATURE', '0.7')),
             bocha_api_keys=bocha_api_keys,
