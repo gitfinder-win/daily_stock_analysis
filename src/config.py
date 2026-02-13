@@ -39,6 +39,26 @@ class Config:
     # === 数据源 API Token ===
     tushare_token: Optional[str] = None
     
+    # === 天勤期货配置 ===
+    tq_account: Optional[str] = None      # 天勤账号
+    tq_password: Optional[str] = None     # 天勤密码
+    tq_mode: str = "sim"                  # 模式: sim(模拟) / real(实盘)
+    tq_broker: Optional[str] = None       # 期货公司(实盘需要)
+    tq_real_account: Optional[str] = None # 实盘账号
+    tq_real_password: Optional[str] = None # 实盘密码
+    
+    # === 期货交易配置 ===
+    futures_enabled: bool = False         # 是否启用期货功能
+    futures_auto_trade: bool = False      # 是否启用自动交易
+    futures_max_position: int = 10        # 最大持仓手数
+    futures_risk_ratio: float = 0.02      # 单笔风险比例(2%)
+    futures_default_symbols: List[str] = field(default_factory=lambda: [
+        "SHFE.au2506",    # 沪金
+        "SHFE.ag2506",    # 沪银
+        "DCE.m2505",      # 豆粕
+        "CZCE.CF505",     # 棉花
+    ])
+    
     # === AI 分析配置 ===
     gemini_api_key: Optional[str] = None
     gemini_model: str = "gemini-3-flash-preview"  # 主模型
@@ -289,6 +309,10 @@ class Config:
         openai_api_key = os.getenv('OPENAI_API_KEY') or os.getenv('NV_KEY')
         # NVIDIA API 默认 base URL
         openai_base_url = os.getenv('OPENAI_BASE_URL') or os.getenv('NV_BASE') or 'https://integrate.api.nvidia.com/v1/'
+        
+        # 天勤期货配置 (支持 TQ1/TQ2 或 TQ_ACCOUNT/TQ_PASSWORD)
+        tq_account = os.getenv('TQ_ACCOUNT') or os.getenv('TQ1')
+        tq_password = os.getenv('TQ_PASSWORD') or os.getenv('TQ2')
 
         return cls(
             stock_list=stock_list,
@@ -374,7 +398,20 @@ class Config:
             # - efinance/akshare_em: 全量拉取，数据丰富但负载大
             realtime_source_priority=os.getenv('REALTIME_SOURCE_PRIORITY', 'akshare_sina,tencent,efinance,akshare_em'),
             realtime_cache_ttl=int(os.getenv('REALTIME_CACHE_TTL', '600')),
-            circuit_breaker_cooldown=int(os.getenv('CIRCUIT_BREAKER_COOLDOWN', '300'))
+            circuit_breaker_cooldown=int(os.getenv('CIRCUIT_BREAKER_COOLDOWN', '300')),
+            # 天勤期货配置
+            tq_account=tq_account,
+            tq_password=tq_password,
+            tq_mode=os.getenv('TQ_MODE', 'sim'),
+            tq_broker=os.getenv('TQ_BROKER'),
+            tq_real_account=os.getenv('TQ_REAL_ACCOUNT'),
+            tq_real_password=os.getenv('TQ_REAL_PASSWORD'),
+            # 期货交易配置
+            futures_enabled=os.getenv('FUTURES_ENABLED', 'false').lower() == 'true',
+            futures_auto_trade=os.getenv('FUTURES_AUTO_TRADE', 'false').lower() == 'true',
+            futures_max_position=int(os.getenv('FUTURES_MAX_POSITION', '10')),
+            futures_risk_ratio=float(os.getenv('FUTURES_RISK_RATIO', '0.02')),
+            futures_default_symbols=[s.strip() for s in os.getenv('FUTURES_DEFAULT_SYMBOLS', 'SHFE.au2506,SHFE.ag2506,DCE.m2505,CZCE.CF505').split(',') if s.strip()],
         )
     
     @classmethod

@@ -120,11 +120,11 @@ logger = logging.getLogger(__name__)
 def parse_arguments() -> argparse.Namespace:
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description='A股自选股智能分析系统',
+        description='A股自选股智能分析系统（支持股票和期货）',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 示例:
-  python main.py                    # 正常运行
+  python main.py                    # 正常运行股票分析
   python main.py --debug            # 调试模式
   python main.py --dry-run          # 仅获取数据，不进行 AI 分析
   python main.py --stocks 600519,000001  # 指定分析特定股票
@@ -132,6 +132,11 @@ def parse_arguments() -> argparse.Namespace:
   python main.py --single-notify    # 启用单股推送模式（每分析完一只立即推送）
   python main.py --schedule         # 启用定时任务模式
   python main.py --market-review    # 仅运行大盘复盘
+  
+  # 期货分析
+  python main.py --futures          # 运行期货分析
+  python main.py --futures --symbols SHFE.au2506,DCE.m2505  # 指定期货合约
+  python main.py --futures --trade  # 期货分析并自动交易
         '''
     )
     
@@ -202,7 +207,176 @@ def parse_arguments() -> argparse.Namespace:
         help='仅启动 WebUI 服务，不自动执行分析（通过 /analysis API 手动触发）'
     )
     
+    # === 期货分析参数 ===
+    parser.add_argument(
+        '--futures',
+        action='store_true',
+        help='运行期货分析模式'
+    )
+    
+    parser.add_argument(
+        '--symbols',
+        type=str,
+        help='期货合约代码，逗号分隔（如 SHFE.au2506,DCE.m2505）'
+    )
+    
+    parser.add_argument(
+        '--trade',
+        action='store_true',
+        help='根据分析结果执行交易（需启用 FUTURES_AUTO_TRADE）'
+    )
+    
+    parser.add_argument(
+        '--sim',
+        action='store_true',
+        default=True,
+        help='使用模拟账户（默认）'
+    )
+    
+    parser.add_argument(
+        '--real',
+        action='store_true',
+        help='使用实盘账户（危险！）'
+    )
+    
     return parser.parse_args()
+
+
+def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
+    """
+    运行期货分析
+    
+    Args:
+        config: 配置对象
+        args: 命令行参数
+        
+    Returns:
+        退出码
+    """
+    logger.info("=" * 60)
+    logger.info("期货智能分析系统 启动")
+    logger.info("=" * 60)
+    
+    # 检查天勤配置
+    if not config.tq_account or not config.tq_password:
+        logger.error("天勤账号或密码未配置，请设置 TQ1/TQ2 或 TQ_ACCOUNT/TQ_PASSWORD 环境变量")
+        return 1
+    
+    # 解析合约列表
+    symbols = None
+    if getattr(args, 'symbols', None):
+        symbols = [s.strip() for s in args.symbols.split(',') if s.strip()]
+    elif config.futures_default_symbols:
+        symbols = config.futures_default_symbols
+    else:
+        # 默认主力合约
+        symbols = ['SHFE.au2506', 'SHFE.ag2506', 'DCE.m2505', 'CZCE.CF505']
+    
+    logger.info(f"分析合约列表: {symbols}")
+    
+    # 确定使用模拟还是实盘
+    use_sim = not getattr(args, 'real', False)
+    if not use_sim:
+        logger.warning("⚠️ 使用实盘账户！请谨慎操作！")
+    else:
+        logger.info("使用模拟账户")
+    
+    # 导入期货模块
+    try:
+        from src.futures import FuturesDataProvider, FuturesAnalyzer, FuturesTrader
+    except ImportError as e:
+        logger.error(f"期货模块导入失败: {e}")
+        logger.error("请确保已安装 tqsdk: pip install tqsdk")
+        return 1
+    
+    # 初始化模块
+    provider = FuturesDataProvider(use_sim=use_sim)
+    analyzer = FuturesAnalyzer()
+    trader = FuturesTrader(use_sim=use_sim) if getattr(args, 'trade', False) else None
+    
+    results = []
+    
+    try:
+        # 连接天勤
+        logger.info("连接天勤服务器...")
+        if not provider.connect():
+            logger.error("连接天勤服务器失败")
+            return 1
+        
+        logger.info("连接成功，开始分析...")
+        
+        # 分析每个合约
+        for symbol in symbols:
+            try:
+                logger.info(f"\n{'='*40}")
+                logger.info(f"分析合约: {symbol}")
+                logger.info(f"{'='*40}")
+                
+                # 获取分析上下文
+                context = provider.get_analysis_context(symbol)
+                
+                if 'error' in context:
+                    logger.error(f"获取数据失败: {context['error']}")
+                    continue
+                
+                # AI分析
+                result = analyzer.analyze(context)
+                results.append(result)
+                
+                # 输出结果
+                logger.info(f"\n📊 分析结果: {result.name}({result.symbol})")
+                logger.info(f"   趋势: {result.trend_prediction}")
+                logger.info(f"   操作: {result.get_emoji()} {result.operation_advice}")
+                logger.info(f"   评分: {result.sentiment_score}")
+                logger.info(f"   置信度: {result.confidence_level}")
+                
+                if result.direction in ['LONG', 'SHORT']:
+                    logger.info(f"   建议入场: {result.entry_price}")
+                    logger.info(f"   止损: {result.stop_loss}")
+                    logger.info(f"   止盈: {result.take_profit}")
+                
+                logger.info(f"\n   分析摘要: {result.analysis_summary[:200]}")
+                
+                # 执行交易（如果启用）
+                if trader and result.direction in ['LONG', 'SHORT']:
+                    logger.info(f"\n🔄 执行交易...")
+                    trade_result = trader.execute_analysis(result, dry_run=False)
+                    if trade_result.success:
+                        logger.info(f"   ✅ 交易成功: {trade_result.message}")
+                    else:
+                        logger.warning(f"   ❌ 交易失败: {trade_result.message}")
+                
+            except Exception as e:
+                logger.error(f"分析 {symbol} 失败: {e}")
+                continue
+        
+        # 输出汇总
+        logger.info("\n" + "=" * 60)
+        logger.info("📈 分析汇总")
+        logger.info("=" * 60)
+        
+        for r in results:
+            logger.info(f"{r.get_emoji()} {r.name}({r.symbol}): {r.operation_advice} | 评分 {r.sentiment_score}")
+        
+        # 获取账户信息
+        account = provider.get_account()
+        if account:
+            logger.info(f"\n💰 账户信息:")
+            logger.info(f"   权益: {account.balance:,.2f}")
+            logger.info(f"   可用: {account.available:,.2f}")
+            logger.info(f"   持仓盈亏: {account.float_profit:,.2f}")
+        
+        logger.info("\n期货分析完成")
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("\n用户中断")
+        return 130
+    except Exception as e:
+        logger.exception(f"期货分析失败: {e}")
+        return 1
+    finally:
+        provider.disconnect()
 
 
 def run_full_analysis(
@@ -392,6 +566,10 @@ def main() -> int:
         return 0
 
     try:
+        # 模式0: 期货分析模式
+        if getattr(args, 'futures', False):
+            return run_futures_analysis(config, args)
+        
         # 模式1: 仅大盘复盘
         if args.market_review:
             logger.info("模式: 仅大盘复盘")
