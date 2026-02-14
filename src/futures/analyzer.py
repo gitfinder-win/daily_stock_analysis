@@ -386,7 +386,20 @@ class FuturesAnalyzer:
             
             if start >= 0 and end > start:
                 json_str = cleaned[start:end]
-                data = json.loads(json_str)
+                
+                # 尝试修复常见JSON格式问题
+                # 1. 移除控制字符
+                import re
+                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
+                # 2. 修复未闭合的字符串（尝试找到最后一个有效的JSON对象）
+                
+                try:
+                    data = json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    # 尝试截断到错误位置之前
+                    logger.warning(f"JSON解析失败，尝试修复: {e}")
+                    # 使用更宽松的解析方式
+                    data = self._extract_json_fields(json_str, symbol, name, exchange)
                 
                 dashboard = data.get('dashboard', {})
                 trade_plan = dashboard.get('trade_plan', {})
@@ -457,6 +470,45 @@ class FuturesAnalyzer:
             raw_response=text,
             success=True,
         )
+    
+    def _extract_json_fields(self, json_str: str, symbol: str, name: str, exchange: str) -> dict:
+        """
+        从损坏的JSON中提取字段（容错处理）
+        """
+        import re
+        
+        def extract_value(pattern: str, text: str, default: str = '') -> str:
+            match = re.search(pattern, text, re.IGNORECASE)
+            return match.group(1) if match else default
+        
+        # 提取核心字段
+        sentiment_score = extract_value(r'"sentiment_score"[\s:]+(\d+)', json_str, '50')
+        trend_prediction = extract_value(r'"trend_prediction"[\s:]+\"([^\"]+)\"', json_str, '震荡')
+        operation_advice = extract_value(r'"operation_advice"[\s:]+\"([^\"]+)\"', json_str, '观望')
+        confidence_level = extract_value(r'"confidence_level"[\s:]+\"([^\"]+)\"', json_str, '低')
+        direction = extract_value(r'"direction"[\s:]+\"([^\"]+)\"', json_str, 'WAIT')
+        entry_price = extract_value(r'"entry_price"[\s:]+([\d.]+)', json_str, '0')
+        stop_loss = extract_value(r'"stop_loss"[\s:]+([\d.]+)', json_str, '0')
+        take_profit = extract_value(r'"take_profit"[\s:]+([\d.]+)', json_str, '0')
+        
+        logger.info(f"从损坏JSON中提取字段: score={sentiment_score}, trend={trend_prediction}")
+        
+        return {
+            'sentiment_score': int(sentiment_score),
+            'trend_prediction': trend_prediction,
+            'operation_advice': operation_advice,
+            'confidence_level': confidence_level,
+            'dashboard': {
+                'trade_plan': {
+                    'direction': direction,
+                    'entry_price': float(entry_price),
+                    'stop_loss': float(stop_loss),
+                    'take_profit': float(take_profit),
+                }
+            },
+            'analysis_summary': f'{name}期货分析',
+            'risk_warning': 'JSON解析异常，结果可能不完整',
+        }
 
 
 def get_futures_analyzer() -> FuturesAnalyzer:

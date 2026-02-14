@@ -324,9 +324,9 @@ def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
                 results.append(result)
                 
                 # 输出结果
-                logger.info(f"\n📊 分析结果: {result.name}({result.symbol})")
+                logger.info(f"\n[分析结果] {result.name}({result.symbol})")
                 logger.info(f"   趋势: {result.trend_prediction}")
-                logger.info(f"   操作: {result.get_emoji()} {result.operation_advice}")
+                logger.info(f"   操作: [{result.direction}] {result.operation_advice}")
                 logger.info(f"   评分: {result.sentiment_score}")
                 logger.info(f"   置信度: {result.confidence_level}")
                 
@@ -339,12 +339,12 @@ def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
                 
                 # 执行交易（如果启用）
                 if trader and result.direction in ['LONG', 'SHORT']:
-                    logger.info(f"\n🔄 执行交易...")
+                    logger.info(f"\n[交易] 执行交易...")
                     trade_result = trader.execute_analysis(result, dry_run=False)
                     if trade_result.success:
-                        logger.info(f"   ✅ 交易成功: {trade_result.message}")
+                        logger.info(f"   [OK] 交易成功: {trade_result.message}")
                     else:
-                        logger.warning(f"   ❌ 交易失败: {trade_result.message}")
+                        logger.warning(f"   [FAIL] 交易失败: {trade_result.message}")
                 
             except Exception as e:
                 logger.error(f"分析 {symbol} 失败: {e}")
@@ -352,16 +352,17 @@ def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
         
         # 输出汇总
         logger.info("\n" + "=" * 60)
-        logger.info("📈 分析汇总")
+        logger.info("[分析汇总]")
         logger.info("=" * 60)
         
         for r in results:
-            logger.info(f"{r.get_emoji()} {r.name}({r.symbol}): {r.operation_advice} | 评分 {r.sentiment_score}")
+            dir_mark = "[多]" if r.direction == "LONG" else "[空]" if r.direction == "SHORT" else "[观望]"
+            logger.info(f"{dir_mark} {r.name}({r.symbol}): {r.operation_advice} | 评分 {r.sentiment_score}")
         
         # 获取账户信息
         account = provider.get_account()
         if account:
-            logger.info(f"\n💰 账户信息:")
+            logger.info(f"\n[账户信息]")
             logger.info(f"   权益: {account.balance:,.2f}")
             logger.info(f"   可用: {account.available:,.2f}")
             logger.info(f"   持仓盈亏: {account.float_profit:,.2f}")
