@@ -404,15 +404,27 @@ class FuturesAnalyzer:
                 dashboard = data.get('dashboard', {})
                 trade_plan = dashboard.get('trade_plan', {})
                 
+                # 获取操作建议
+                operation_advice = data.get('operation_advice', '观望')
+                
+                # 根据操作建议推断方向（确保一致性）
+                advice_lower = operation_advice.lower() if operation_advice else ''
+                if any(w in advice_lower for w in ['买入', '做多', 'buy', 'long']):
+                    direction = 'LONG'
+                elif any(w in advice_lower for w in ['卖出', '做空', 'sell', 'short']):
+                    direction = 'SHORT'
+                else:
+                    direction = trade_plan.get('direction', 'WAIT')
+                
                 return FuturesAnalysisResult(
                     symbol=symbol,
                     name=name,
                     exchange=exchange,
                     sentiment_score=int(data.get('sentiment_score', 50)),
                     trend_prediction=data.get('trend_prediction', '震荡'),
-                    operation_advice=data.get('operation_advice', '观望'),
+                    operation_advice=operation_advice,
                     confidence_level=data.get('confidence_level', '中'),
-                    direction=trade_plan.get('direction', 'WAIT'),
+                    direction=direction,
                     entry_price=float(trade_plan.get('entry_price', 0)),
                     stop_loss=float(trade_plan.get('stop_loss', 0)),
                     take_profit=float(trade_plan.get('take_profit', 0)),
