@@ -367,6 +367,15 @@ def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
             logger.info(f"   可用: {account.available:,.2f}")
             logger.info(f"   持仓盈亏: {account.float_profit:,.2f}")
         
+        # 生成分析报告
+        if results:
+            try:
+                from src.futures import generate_futures_report
+                report_path = generate_futures_report(results, account)
+                logger.info(f"\n[报告] 已保存到: {report_path}")
+            except Exception as e:
+                logger.warning(f"生成报告失败: {e}")
+        
         logger.info("\n期货分析完成")
         return 0
         

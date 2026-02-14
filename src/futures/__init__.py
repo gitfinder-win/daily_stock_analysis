@@ -16,9 +16,10 @@
     from src.futures import FuturesAnalyzer, FuturesTrader
 """
 
-from .data_provider import FuturesDataProvider
+from .data_provider import FuturesDataProvider, AccountInfo
 from .analyzer import FuturesAnalyzer, FuturesAnalysisResult
 from .trader import FuturesTrader, TradeSignal, TradeResult
+from .report_generator import FuturesReportGenerator, generate_futures_report
 
 __all__ = [
     'FuturesDataProvider',
@@ -27,4 +28,7 @@ __all__ = [
     'FuturesTrader',
     'TradeSignal',
     'TradeResult',
+    'AccountInfo',
+    'FuturesReportGenerator',
+    'generate_futures_report',
 ]
