@@ -14,6 +14,7 @@
 """
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List
@@ -201,7 +202,7 @@ class FuturesDataProvider:
             # 选择连接模式
             if self._use_sim:
                 # 模拟账户 - 使用TqKq持久化模拟
-                self._api = TqApi(TqKq(), auth=TqAuth(self._tq_account, self._tq_password))
+                self._api = TqApi(account=TqKq(), auth=TqAuth(self._tq_account, self._tq_password))
                 logger.info("天勤模拟账户连接成功")
             else:
                 # 实盘账户
@@ -250,7 +251,8 @@ class FuturesDataProvider:
             
         try:
             quote = self._api.get_quote(symbol)
-            self._api.wait_update()
+            # 设置5秒超时，避免非交易时间无限等待
+            self._api.wait_update(deadline=time.time() + 5)
             
             return FuturesQuote(
                 symbol=symbol,
@@ -293,7 +295,8 @@ class FuturesDataProvider:
             
         try:
             klines = self._api.get_kline_serial(symbol, duration_seconds, length)
-            self._api.wait_update()
+            # 设置5秒超时，避免非交易时间无限等待
+            self._api.wait_update(deadline=time.time() + 5)
             
             result = []
             for i in range(len(klines)):
@@ -323,7 +326,8 @@ class FuturesDataProvider:
             
         try:
             account = self._api.get_account()
-            self._api.wait_update()
+            # 设置3秒超时
+            self._api.wait_update(deadline=time.time() + 3)
             
             return AccountInfo(
                 balance=float(account.balance),
@@ -344,7 +348,8 @@ class FuturesDataProvider:
             
         try:
             positions = self._api.get_position()
-            self._api.wait_update()
+            # 设置3秒超时
+            self._api.wait_update(deadline=time.time() + 3)
             
             result = []
             # 遍历所有持仓
