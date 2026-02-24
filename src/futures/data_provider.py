@@ -172,13 +172,19 @@ class FuturesDataProvider:
         
     def _get_symbol_name(self, symbol: str) -> str:
         """获取合约名称"""
-        # 处理主力合约格式: KQ.m@au -> 沪金主力
+        # 处理主力合约格式: KQ.m@SHFE.au -> 沪金主力
         if symbol.startswith('KQ.m@'):
-            variety = symbol.split('@')[1] if '@' in symbol else symbol
-            name = self.SYMBOL_NAME_MAP.get(variety, variety)
-            return f"{name}主力"
+            # 格式: KQ.m@SHFE.au -> 提取 au
+            parts = symbol.split('@')
+            if len(parts) == 2:
+                exchange_variety = parts[1]  # SHFE.au
+                var_parts = exchange_variety.split('.')
+                variety = var_parts[-1] if len(var_parts) > 1 else exchange_variety
+                name = self.SYMBOL_NAME_MAP.get(variety, variety)
+                return f"{name}主力"
+            return symbol
         
-        # 处理普通合约格式: SHFE.au2506 -> au
+        # 处理普通合约格式: SHFE.au2506 -> 沪金2506
         parts = symbol.split('.')
         if len(parts) == 2:
             exchange, contract = parts

@@ -166,8 +166,8 @@ class FuturesScreener:
         """
         获取所有主力合约代码
         
-        天勤SDK主力合约格式: KQ.m@品种代码
-        例如: KQ.m@au (沪金主力), KQ.m@rb (螺纹钢主力)
+        天勤SDK主力合约格式: KQ.m@交易所.品种
+        例如: KQ.m@SHFE.au (沪金主力), KQ.m@DCE.m (豆粕主力)
         
         Args:
             year: 年份，默认当前年份（主力合约不需要年月）
@@ -178,9 +178,9 @@ class FuturesScreener:
         contracts = []
         
         for exchange, variety in self.MAIN_VARIETIES:
-            # 天勤主力合约格式: KQ.m@品种代码
-            # KQ.m 表示主力合约，后面跟品种代码
-            main_symbol = f"KQ.m@{variety}"
+            # 天勤主力合约格式: KQ.m@交易所.品种
+            # KQ.m 表示主力合约
+            main_symbol = f"KQ.m@{exchange}.{variety}"
             contracts.append(main_symbol)
             
         return contracts
