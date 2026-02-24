@@ -137,6 +137,12 @@ def parse_arguments() -> argparse.Namespace:
   python main.py --futures          # 运行期货分析
   python main.py --futures --symbols SHFE.au2506,DCE.m2505  # 指定期货合约
   python main.py --futures --trade  # 期货分析并自动交易
+  
+  # 期货筛选（自动挑选最优标的）
+  python main.py --screen           # 筛选前3名期货标的
+  python main.py --screen --top-n 5 # 筛选前5名
+  python main.py --screen --min-score 60  # 最低评分60
+  python main.py --screen --trade   # 筛选后自动交易
         '''
     )
     
@@ -237,6 +243,33 @@ def parse_arguments() -> argparse.Namespace:
         '--real',
         action='store_true',
         help='使用实盘账户（危险！）'
+    )
+    
+    # === 期货筛选参数 ===
+    parser.add_argument(
+        '--screen',
+        action='store_true',
+        help='筛选模式：自动分析所有主力期货，挑选排名靠前的标的'
+    )
+    
+    parser.add_argument(
+        '--top-n',
+        type=int,
+        default=3,
+        help='筛选模式下返回前N个标的（默认3）'
+    )
+    
+    parser.add_argument(
+        '--min-score',
+        type=float,
+        default=50.0,
+        help='筛选模式下最低评分（默认50）'
+    )
+    
+    parser.add_argument(
+        '--varieties',
+        type=str,
+        help='指定期货品种（逗号分隔），如：au,ag,cu'
     )
     
     return parser.parse_args()
@@ -384,6 +417,161 @@ def run_futures_analysis(config: Config, args: argparse.Namespace) -> int:
         return 130
     except Exception as e:
         logger.exception(f"期货分析失败: {e}")
+        return 1
+    finally:
+        provider.disconnect()
+
+
+def run_futures_screen(config: Config, args: argparse.Namespace) -> int:
+    """
+    运行期货筛选模式
+    
+    自动分析所有主力期货，挑选排名靠前的标的
+    
+    Args:
+        config: 配置对象
+        args: 命令行参数
+        
+    Returns:
+        退出码
+    """
+    logger.info("=" * 60)
+    logger.info("期货智能筛选系统 启动")
+    logger.info("=" * 60)
+    
+    # 检查天勤配置
+    if not config.tq_account or not config.tq_password:
+        logger.error("天勤账号或密码未配置，请设置 TQ1/TQ2 或 TQ_ACCOUNT/TQ_PASSWORD 环境变量")
+        return 1
+    
+    # 获取参数
+    top_n = getattr(args, 'top_n', 3)
+    min_score = getattr(args, 'min_score', 50.0)
+    varieties = None
+    if getattr(args, 'varieties', None):
+        varieties = [v.strip() for v in args.varieties.split(',') if v.strip()]
+    
+    # 是否交易
+    do_trade = getattr(args, 'trade', False)
+    use_sim = not getattr(args, 'real', False)
+    
+    logger.info(f"筛选参数: top_n={top_n}, min_score={min_score}, trade={do_trade}")
+    
+    # 导入期货模块
+    try:
+        from src.futures import (
+            FuturesDataProvider, FuturesAnalyzer, FuturesTrader,
+            FuturesScreener, FuturesAnalysisResult, generate_futures_report
+        )
+    except ImportError as e:
+        logger.error(f"期货模块导入失败: {e}")
+        logger.error("请确保已安装 tqsdk: pip install tqsdk")
+        return 1
+    
+    # 初始化
+    provider = FuturesDataProvider(use_sim=use_sim)
+    analyzer = FuturesAnalyzer()
+    trader = FuturesTrader(use_sim=use_sim) if do_trade else None
+    screener = FuturesScreener(provider, analyzer)
+    
+    try:
+        # 连接天勤
+        logger.info("连接天勤服务器...")
+        if not provider.connect():
+            logger.error("连接天勤服务器失败")
+            return 1
+        
+        logger.info("连接成功，开始筛选分析...")
+        
+        # 执行筛选
+        rankings = screener.screen(
+            top_n=top_n,
+            min_score=min_score,
+            only_tradeable=True,
+            varieties=varieties,
+        )
+        
+        if not rankings:
+            logger.info("未找到符合条件的期货标的")
+            return 0
+        
+        # 输出筛选结果
+        logger.info("\n" + "=" * 60)
+        logger.info("[筛选结果] 排名前{}的期货标的".format(len(rankings)))
+        logger.info("=" * 60)
+        
+        for r in rankings:
+            dir_mark = "[多]" if r.direction == "LONG" else "[空]"
+            logger.info(f"\n[第{r.rank}名] {r.name}({r.symbol})")
+            logger.info(f"   综合评分: {r.total_score:.1f}")
+            logger.info(f"   操作方向: {dir_mark} {r.operation_advice}")
+            logger.info(f"   入场价: {r.entry_price} | 止损: {r.stop_loss} | 止盈: {r.take_profit}")
+            logger.info(f"   置信度: {r.confidence_level}")
+        
+        # 执行交易
+        if trader and rankings:
+            logger.info("\n" + "=" * 60)
+            logger.info("[交易执行]")
+            logger.info("=" * 60)
+            
+            for r in rankings:
+                # 构造分析结果用于交易
+                result = FuturesAnalysisResult(
+                    symbol=r.symbol,
+                    name=r.name,
+                    exchange=r.exchange,
+                    sentiment_score=r.sentiment_score,
+                    trend_prediction=r.operation_advice,
+                    operation_advice=r.operation_advice,
+                    confidence_level=r.confidence_level,
+                    direction=r.direction,
+                    entry_price=r.entry_price,
+                    stop_loss=r.stop_loss,
+                    take_profit=r.take_profit,
+                    analysis_summary=r.analysis_summary,
+                )
+                
+                logger.info(f"\n执行 {r.name} 交易...")
+                trade_result = trader.execute_analysis(result, dry_run=False)
+                if trade_result.success:
+                    logger.info(f"   [OK] 交易成功: {trade_result.message}")
+                else:
+                    logger.warning(f"   [FAIL] 交易失败: {trade_result.message}")
+        
+        # 生成报告
+        try:
+            # 转换为分析结果列表
+            results = [
+                FuturesAnalysisResult(
+                    symbol=r.symbol,
+                    name=r.name,
+                    exchange=r.exchange,
+                    sentiment_score=r.sentiment_score,
+                    trend_prediction=r.operation_advice,
+                    operation_advice=r.operation_advice,
+                    confidence_level=r.confidence_level,
+                    direction=r.direction,
+                    entry_price=r.entry_price,
+                    stop_loss=r.stop_loss,
+                    take_profit=r.take_profit,
+                    analysis_summary=r.analysis_summary,
+                ) for r in rankings
+            ]
+            
+            account = provider.get_account()
+            report_path = generate_futures_report(results, account)
+            logger.info(f"\n[报告] 已保存到: {report_path}")
+        except Exception as e:
+            logger.warning(f"生成报告失败: {e}")
+        
+        logger.info("\n筛选完成")
+        return 0
+        
+    except KeyboardInterrupt:
+        logger.info("\n用户中断")
+        return 130
+    except Exception as e:
+        logger.exception(f"筛选失败: {e}")
         return 1
     finally:
         provider.disconnect()
@@ -576,6 +764,10 @@ def main() -> int:
         return 0
 
     try:
+        # 模式0: 期货筛选模式
+        if getattr(args, 'screen', False):
+            return run_futures_screen(config, args)
+        
         # 模式0: 期货分析模式
         if getattr(args, 'futures', False):
             return run_futures_analysis(config, args)
