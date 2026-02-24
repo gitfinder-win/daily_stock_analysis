@@ -172,7 +172,13 @@ class FuturesDataProvider:
         
     def _get_symbol_name(self, symbol: str) -> str:
         """获取合约名称"""
-        # 从合约代码提取品种代码 (如 SHFE.au2506 -> au)
+        # 处理主力合约格式: KQ.m@au -> 沪金主力
+        if symbol.startswith('KQ.m@'):
+            variety = symbol.split('@')[1] if '@' in symbol else symbol
+            name = self.SYMBOL_NAME_MAP.get(variety, variety)
+            return f"{name}主力"
+        
+        # 处理普通合约格式: SHFE.au2506 -> au
         parts = symbol.split('.')
         if len(parts) == 2:
             exchange, contract = parts
@@ -254,10 +260,18 @@ class FuturesDataProvider:
             # 设置5秒超时，避免非交易时间无限等待
             self._api.wait_update(deadline=time.time() + 5)
             
+            # 获取交易所（主力合约需要从underlying_symbol获取）
+            if symbol.startswith('KQ.m@'):
+                # 主力合约：从 underlying_symbol 提取交易所
+                underlying = str(quote.underlying_symbol) if quote.underlying_symbol else ''
+                exchange = underlying.split('.')[0] if '.' in underlying else 'MAIN'
+            else:
+                exchange = symbol.split('.')[0] if '.' in symbol else ''
+            
             return FuturesQuote(
                 symbol=symbol,
                 name=self._get_symbol_name(symbol),
-                exchange=symbol.split('.')[0] if '.' in symbol else '',
+                exchange=exchange,
                 last_price=float(quote.last_price) if quote.last_price else 0.0,
                 open=float(quote.open) if quote.open else 0.0,
                 high=float(quote.highest) if quote.highest else 0.0,
