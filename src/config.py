@@ -298,7 +298,8 @@ class Config:
         bocha_keys_str = os.getenv('BOCHA_API_KEYS', '')
         bocha_api_keys = [k.strip() for k in bocha_keys_str.split(',') if k.strip()]
         
-        tavily_keys_str = os.getenv('TAVILY_API_KEYS', '')
+        # Tavily API Keys（支持多种命名方式）
+        tavily_keys_str = os.getenv('TAVILY_API_KEYS', '') or os.getenv('TAVILY_SEARCH_API_KEY', '')
         tavily_api_keys = [k.strip() for k in tavily_keys_str.split(',') if k.strip()]
         
         serpapi_keys_str = os.getenv('SERPAPI_API_KEYS', '')
