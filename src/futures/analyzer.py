@@ -403,6 +403,8 @@ class FuturesAnalyzer:
                 
                 dashboard = data.get('dashboard', {})
                 trade_plan = dashboard.get('trade_plan', {})
+                data_perspective = dashboard.get('data_perspective', {})
+                price_position = data_perspective.get('price_position', {})
                 
                 # 获取操作建议
                 operation_advice = data.get('operation_advice', '观望')
@@ -416,6 +418,37 @@ class FuturesAnalyzer:
                 else:
                     direction = trade_plan.get('direction', 'WAIT')
                 
+                # 获取价格（优先从trade_plan，备选从price_position）
+                entry_price = float(trade_plan.get('entry_price', 0) or 0)
+                stop_loss = float(trade_plan.get('stop_loss', 0) or 0)
+                take_profit = float(trade_plan.get('take_profit', 0) or 0)
+                
+                # 如果入场价为0，尝试从price_position获取当前价
+                if entry_price == 0:
+                    current_price = float(price_position.get('current_price', 0) or 0)
+                    if current_price > 0:
+                        entry_price = current_price
+                        logger.info(f"入场价从current_price获取: {entry_price}")
+                
+                # 如果止损价为0，尝试根据支撑位或计算
+                if stop_loss == 0 and entry_price > 0:
+                    support = float(price_position.get('support_level', 0) or 0)
+                    if support > 0:
+                        stop_loss = support
+                    else:
+                        # 默认止损：多头2%，空头2%
+                        stop_loss = round(entry_price * 0.98, 2) if direction == 'LONG' else round(entry_price * 1.02, 2)
+                    logger.info(f"止损价自动计算: {stop_loss}")
+                
+                # 如果止盈价为0，根据风险收益比计算（默认1:2）
+                if take_profit == 0 and entry_price > 0 and stop_loss > 0:
+                    risk = abs(entry_price - stop_loss)
+                    if direction == 'LONG':
+                        take_profit = round(entry_price + risk * 2, 2)
+                    else:
+                        take_profit = round(entry_price - risk * 2, 2)
+                    logger.info(f"止盈价自动计算: {take_profit}")
+                
                 return FuturesAnalysisResult(
                     symbol=symbol,
                     name=name,
@@ -425,9 +458,9 @@ class FuturesAnalyzer:
                     operation_advice=operation_advice,
                     confidence_level=data.get('confidence_level', '中'),
                     direction=direction,
-                    entry_price=float(trade_plan.get('entry_price', 0)),
-                    stop_loss=float(trade_plan.get('stop_loss', 0)),
-                    take_profit=float(trade_plan.get('take_profit', 0)),
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     position_size=int(trade_plan.get('position_size', 1)),
                     risk_level=dashboard.get('risk_assessment', {}).get('risk_level', '中'),
                     risk_warning=data.get('risk_warning', ''),
