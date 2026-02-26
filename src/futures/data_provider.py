@@ -314,17 +314,17 @@ class FuturesDataProvider:
             return {}
             
         try:
-            # 批量订阅行情
-            quotes_dict = self._api.get_quote_list(symbols)
+            # 批量订阅行情（返回 List[Quote]，顺序与 symbols 一致）
+            quote_list = self._api.get_quote_list(symbols)
             # 等待数据更新
             self._api.wait_update(deadline=time.time() + 5)
             
             result = {}
-            for symbol in symbols:
-                if symbol not in quotes_dict:
+            for i, symbol in enumerate(symbols):
+                if i >= len(quote_list):
                     continue
                     
-                quote = quotes_dict[symbol]
+                quote = quote_list[i]
                 
                 # 获取交易所和 underlying_symbol
                 if symbol.startswith('KQ.m@'):
