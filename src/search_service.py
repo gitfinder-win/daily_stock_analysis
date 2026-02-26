@@ -637,6 +637,102 @@ class SearchService:
             error_message="所有搜索引擎都不可用或搜索失败"
         )
     
+    def search_futures_news(
+        self,
+        symbol: str,
+        name: str,
+        exchange: str = "",
+        max_results: int = 5
+    ) -> SearchResponse:
+        """
+        搜索期货相关新闻
+        
+        Args:
+            symbol: 合约代码（如 SHFE.au2506 或 KQ.m@SHFE.au）
+            name: 合约名称（如 沪金主力）
+            exchange: 交易所
+            max_results: 最大返回结果数
+            
+        Returns:
+            SearchResponse 对象
+        """
+        # 提取品种名称（去掉"主力"后缀）
+        variety_name = name.replace("主力", "").strip()
+        
+        # 构建搜索查询
+        query = f"{variety_name}期货 最新消息 行情分析"
+        
+        logger.info(f"搜索期货新闻: {name}({symbol})")
+        
+        # 依次尝试各个搜索引擎
+        for provider in self._providers:
+            if not provider.is_available:
+                continue
+            
+            response = provider.search(query, max_results)
+            
+            if response.success and response.results:
+                logger.info(f"使用 {provider.name} 搜索期货新闻成功")
+                return response
+            else:
+                logger.warning(f"{provider.name} 搜索失败，尝试下一个引擎")
+        
+        # 所有引擎都失败
+        return SearchResponse(
+            query=query,
+            results=[],
+            provider="None",
+            success=False,
+            error_message="所有搜索引擎都不可用或搜索失败"
+        )
+    
+    def search_futures_events(
+        self,
+        symbol: str,
+        name: str,
+        event_types: Optional[List[str]] = None
+    ) -> SearchResponse:
+        """
+        搜索期货特定事件（库存、供需、政策等）
+        
+        Args:
+            symbol: 合约代码
+            name: 合约名称
+            event_types: 事件类型列表
+            
+        Returns:
+            SearchResponse 对象
+        """
+        variety_name = name.replace("主力", "").strip()
+        
+        if event_types is None:
+            event_types = [
+                "库存数据", "供需报告", "政策调整",
+                "进出口数据", "产量数据", "现货价格"
+            ]
+        
+        # 构建事件搜索查询
+        query = f"{variety_name}期货 {' '.join(event_types[:3])}"
+        
+        logger.info(f"搜索期货事件: {name}")
+        
+        for provider in self._providers:
+            if not provider.is_available:
+                continue
+            
+            response = provider.search(query, 5)
+            
+            if response.success and response.results:
+                return response
+        
+        return SearchResponse(
+            query=query,
+            results=[],
+            provider="None",
+            success=False,
+            error_message="搜索期货事件失败"
+        )
+    
     def search_stock_events(
         self,
         stock_code: str,

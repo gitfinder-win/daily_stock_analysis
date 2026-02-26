@@ -10,6 +10,7 @@
 - 复用股票分析器的AI能力
 - 期货特定的交易理念
 - 风险控制逻辑
+- 舆情分析
 """
 
 import json
@@ -48,6 +49,11 @@ class FuturesAnalysisResult:
     risk_level: str = "中"         # 风险等级
     risk_warning: str = ""         # 风险提示
     
+    # 舆情分析
+    news_summary: str = ""         # 新闻摘要
+    news_sentiment: str = ""       # 新闻情绪
+    market_sentiment: str = ""     # 市场情绪
+    
     # 分析详情
     analysis_summary: str = ""     # 分析摘要
     key_points: str = ""           # 核心要点
@@ -74,6 +80,9 @@ class FuturesAnalysisResult:
             'position_size': self.position_size,
             'risk_level': self.risk_level,
             'risk_warning': self.risk_warning,
+            'news_summary': self.news_summary,
+            'news_sentiment': self.news_sentiment,
+            'market_sentiment': self.market_sentiment,
             'analysis_summary': self.analysis_summary,
             'key_points': self.key_points,
             'success': self.success,
@@ -253,6 +262,10 @@ class FuturesAnalyzer:
             )
         
         try:
+            # 搜索期货舆情新闻
+            news_context = self._search_futures_news(symbol, name, exchange)
+            context['news_context'] = news_context
+            
             # 构建期货专用提示词
             prompt = self._format_prompt(context)
             
@@ -292,6 +305,41 @@ class FuturesAnalyzer:
                 error_message=str(e),
             )
     
+    def _search_futures_news(self, symbol: str, name: str, exchange: str) -> str:
+        """
+        搜索期货舆情新闻
+        
+        Args:
+            symbol: 合约代码
+            name: 合约名称
+            exchange: 交易所
+            
+        Returns:
+            舆情上下文字符串
+        """
+        try:
+            from src.search_service import get_search_service
+            
+            service = get_search_service()
+            if not service.is_available:
+                logger.debug("搜索引擎未配置，跳过舆情搜索")
+                return ""
+            
+            # 搜索期货新闻
+            news_response = service.search_futures_news(symbol, name, exchange, max_results=5)
+            
+            if news_response.success and news_response.results:
+                context = news_response.to_context(max_results=5)
+                logger.info(f"获取期货舆情成功: {name}, {len(news_response.results)}条新闻")
+                return context
+            else:
+                logger.debug(f"未找到 {name} 相关新闻")
+                return ""
+                
+        except Exception as e:
+            logger.warning(f"搜索期货舆情失败: {e}")
+            return ""
+    
     def _format_prompt(self, context: Dict[str, Any]) -> str:
         """格式化分析提示词"""
         symbol = context.get('symbol', 'Unknown')
@@ -300,6 +348,23 @@ class FuturesAnalyzer:
         trend = context.get('trend', {})
         volume = context.get('volume_analysis', {})
         ma = context.get('ma', {})
+        news_context = context.get('news_context', '')
+        
+        # 构建舆情区块
+        news_section = ""
+        if news_context:
+            news_section = f"""
+---
+
+## 📰 舆情资讯
+
+{news_context}
+
+**舆情分析要求：**
+- 分析新闻对期货行情的潜在影响
+- 判断消息面是利多、利空还是中性
+- 关注供需变化、政策调整、库存数据等关键信息
+"""
         
         prompt = f"""# 期货决策仪表盘分析请求
 
@@ -347,7 +412,7 @@ class FuturesAnalyzer:
 |------|------|------|
 | 量能状态 | {volume.get('status', '未知')} | |
 | 量比 | {volume.get('volume_ratio', 'N/A')} | |
-
+{news_section}
 ---
 
 ## ✅ 分析任务
@@ -359,6 +424,17 @@ class FuturesAnalyzer:
 2. 入场价位和止损止盈设置
 3. 风险收益比
 4. 仓位建议
+5. **舆情影响分析（如有新闻数据）**
+
+### JSON输出要求：
+在 dashboard 中增加 `intelligence` 字段用于舆情分析：
+```json
+"intelligence": {{
+    "sentiment_summary": "舆情情绪总结（利多/利空/中性）",
+    "key_news": "关键新闻摘要（一句话）",
+    "impact_analysis": "对行情的影响分析"
+}}
+```
 
 请输出完整的JSON格式决策仪表盘。"""
         
@@ -449,6 +525,12 @@ class FuturesAnalyzer:
                         take_profit = round(entry_price - risk * 2, 2)
                     logger.info(f"止盈价自动计算: {take_profit}")
                 
+                # 获取舆情数据
+                intelligence = dashboard.get('intelligence', {})
+                news_summary = intelligence.get('key_news', '')
+                news_sentiment = intelligence.get('sentiment_summary', '')
+                market_sentiment = intelligence.get('impact_analysis', '')
+                
                 return FuturesAnalysisResult(
                     symbol=symbol,
                     name=name,
@@ -464,6 +546,9 @@ class FuturesAnalyzer:
                     position_size=int(trade_plan.get('position_size', 1)),
                     risk_level=dashboard.get('risk_assessment', {}).get('risk_level', '中'),
                     risk_warning=data.get('risk_warning', ''),
+                    news_summary=news_summary,
+                    news_sentiment=news_sentiment,
+                    market_sentiment=market_sentiment,
                     analysis_summary=data.get('analysis_summary', ''),
                     key_points=data.get('key_points', ''),
                     dashboard=dashboard,
