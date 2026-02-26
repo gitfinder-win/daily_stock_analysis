@@ -153,16 +153,18 @@ class FuturesScreener:
         'INE': '能源中心',
     }
     
-    def __init__(self, provider=None, analyzer=None):
+    def __init__(self, provider=None, analyzer=None, blacklist: List[str] = None):
         """
         初始化筛选器
         
         Args:
             provider: FuturesDataProvider 实例
             analyzer: FuturesAnalyzer 实例
+            blacklist: 期货黑名单（品种代码列表，如 ['au', 'ag']）
         """
         self.provider = provider
         self.analyzer = analyzer
+        self.blacklist = [b.lower() for b in (blacklist or [])]
         
     def get_main_contracts(self, year: int = None) -> List[str]:
         """
@@ -180,6 +182,11 @@ class FuturesScreener:
         contracts = []
         
         for exchange, variety in self.MAIN_VARIETIES:
+            # 检查是否在黑名单中
+            if variety.lower() in self.blacklist:
+                logger.debug(f"跳过黑名单品种: {variety}")
+                continue
+            
             # 天勤主力合约格式: KQ.m@交易所.品种
             # KQ.m 表示主力合约
             main_symbol = f"KQ.m@{exchange}.{variety}"

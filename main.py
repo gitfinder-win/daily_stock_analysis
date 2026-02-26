@@ -472,7 +472,7 @@ def run_futures_screen(config: Config, args: argparse.Namespace) -> int:
     provider = FuturesDataProvider(use_sim=use_sim)
     analyzer = FuturesAnalyzer()
     trader = FuturesTrader(use_sim=use_sim) if do_trade else None
-    screener = FuturesScreener(provider, analyzer)
+    screener = FuturesScreener(provider, analyzer, blacklist=config.futures_blacklist)
     
     try:
         # 连接天勤

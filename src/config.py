@@ -58,6 +58,7 @@ class Config:
         "DCE.m2505",      # 豆粕
         "CZCE.CF505",     # 棉花
     ])
+    futures_blacklist: List[str] = field(default_factory=list)  # 期货黑名单（品种代码，如: au,ag）
     
     # === AI 分析配置 ===
     gemini_api_key: Optional[str] = None
@@ -413,6 +414,7 @@ class Config:
             futures_max_position=int(os.getenv('FUTURES_MAX_POSITION', '10')),
             futures_risk_ratio=float(os.getenv('FUTURES_RISK_RATIO', '0.02')),
             futures_default_symbols=[s.strip() for s in os.getenv('FUTURES_DEFAULT_SYMBOLS', 'SHFE.au2506,SHFE.ag2506,DCE.m2505,CZCE.CF505').split(',') if s.strip()],
+            futures_blacklist=[s.strip().lower() for s in os.getenv('FUTURES_BLACKLIST', '').split(',') if s.strip()],
         )
     
     @classmethod
