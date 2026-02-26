@@ -21,9 +21,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FuturesRanking:
     """期货排名结果"""
-    symbol: str                    # 合约代码
+    symbol: str                    # 合约代码 (主力合约代码如 KQ.m@SHFE.au)
     name: str                      # 合约名称
     exchange: str                  # 交易所
+    underlying_symbol: str = ""    # 实际合约代码 (如 SHFE.au2506)
     
     # 评分维度
     trend_score: float = 0.0       # 趋势评分 (0-100)
@@ -48,6 +49,7 @@ class FuturesRanking:
     def to_dict(self) -> Dict[str, Any]:
         return {
             'symbol': self.symbol,
+            'underlying_symbol': self.underlying_symbol,
             'name': self.name,
             'exchange': self.exchange,
             'trend_score': self.trend_score,
@@ -334,10 +336,15 @@ class FuturesScreener:
         if result.direction == 'WAIT':
             total_score *= 0.5
         
+        # 获取实际合约代码
+        quote_data = context.get('quote', {})
+        underlying_symbol = quote_data.get('underlying_symbol', result.symbol)
+        
         return FuturesRanking(
             symbol=result.symbol,
             name=result.name,
             exchange=result.exchange,
+            underlying_symbol=underlying_symbol,
             trend_score=trend_score,
             volume_score=volume_score,
             sentiment_score=sentiment_score,

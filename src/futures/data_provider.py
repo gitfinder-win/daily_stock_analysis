@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FuturesQuote:
     """期货行情数据"""
-    symbol: str                    # 合约代码 (如 SHFE.au2506)
+    symbol: str                    # 合约代码 (如 SHFE.au2506 或 KQ.m@SHFE.au)
     name: str = ""                 # 合约名称
     exchange: str = ""             # 交易所
+    underlying_symbol: str = ""    # 主力合约对应的实际合约代码 (如 SHFE.au2506)
     
     # 价格
     last_price: float = 0.0        # 最新价
@@ -278,6 +279,7 @@ class FuturesDataProvider:
                 symbol=symbol,
                 name=self._get_symbol_name(symbol),
                 exchange=exchange,
+                underlying_symbol=underlying if symbol.startswith('KQ.m@') else symbol,
                 last_price=float(quote.last_price) if quote.last_price else 0.0,
                 open=float(quote.open) if quote.open else 0.0,
                 high=float(quote.highest) if quote.highest else 0.0,

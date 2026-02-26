@@ -502,7 +502,9 @@ def run_futures_screen(config: Config, args: argparse.Namespace) -> int:
         
         for r in rankings:
             dir_mark = "[多]" if r.direction == "LONG" else "[空]"
-            logger.info(f"\n[第{r.rank}名] {r.name}({r.symbol})")
+            underlying = f" → {r.underlying_symbol}" if r.underlying_symbol else ""
+            logger.info(f"\n[第{r.rank}名] {r.name}")
+            logger.info(f"   合约代码: {r.symbol}{underlying}")
             logger.info(f"   综合评分: {r.total_score:.1f}")
             logger.info(f"   操作方向: {dir_mark} {r.operation_advice}")
             logger.info(f"   入场价: {r.entry_price} | 止损: {r.stop_loss} | 止盈: {r.take_profit}")
