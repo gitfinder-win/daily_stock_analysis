@@ -236,14 +236,20 @@ class FuturesScreener:
             
         logger.info(f"开始分析 {len(contracts)} 个主力合约...")
         
+        # 批量订阅行情（提高效率，避免警告）
+        logger.info("批量订阅行情数据...")
+        quotes = self.provider.get_quote_list(contracts)
+        valid_contracts = [s for s in contracts if s in quotes]
+        logger.info(f"有效合约: {len(valid_contracts)}/{len(contracts)}")
+        
         rankings = []
         
-        for i, symbol in enumerate(contracts):
+        for i, symbol in enumerate(valid_contracts):
             try:
-                logger.info(f"[{i+1}/{len(contracts)}] 分析: {symbol}")
+                logger.info(f"[{i+1}/{len(valid_contracts)}] 分析: {symbol}")
                 
-                # 获取分析上下文
-                context = self.provider.get_analysis_context(symbol)
+                # 获取分析上下文（使用已缓存的行情）
+                context = self.provider.get_analysis_context(symbol, cached_quote=quotes.get(symbol))
                 
                 if 'error' in context:
                     logger.warning(f"跳过 {symbol}: {context['error']}")

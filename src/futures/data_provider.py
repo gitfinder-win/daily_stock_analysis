@@ -295,6 +295,69 @@ class FuturesDataProvider:
             logger.error(f"获取行情失败 {symbol}: {e}")
             return None
     
+    def get_quote_list(self, symbols: List[str]) -> Dict[str, FuturesQuote]:
+        """
+        批量获取实时行情（推荐用于多合约订阅）
+        
+        使用 api.get_quote_list 批量订阅，效率更高
+        
+        Args:
+            symbols: 合约代码列表
+            
+        Returns:
+            {symbol: FuturesQuote} 字典
+        """
+        if not self._ensure_connection():
+            return {}
+        
+        if not symbols:
+            return {}
+            
+        try:
+            # 批量订阅行情
+            quotes_dict = self._api.get_quote_list(symbols)
+            # 等待数据更新
+            self._api.wait_update(deadline=time.time() + 5)
+            
+            result = {}
+            for symbol in symbols:
+                if symbol not in quotes_dict:
+                    continue
+                    
+                quote = quotes_dict[symbol]
+                
+                # 获取交易所和 underlying_symbol
+                if symbol.startswith('KQ.m@'):
+                    underlying = str(quote.underlying_symbol) if quote.underlying_symbol else ''
+                    exchange = underlying.split('.')[0] if '.' in underlying else 'MAIN'
+                else:
+                    underlying = symbol
+                    exchange = symbol.split('.')[0] if '.' in symbol else ''
+                
+                result[symbol] = FuturesQuote(
+                    symbol=symbol,
+                    name=self._get_symbol_name(symbol),
+                    exchange=exchange,
+                    underlying_symbol=underlying if symbol.startswith('KQ.m@') else symbol,
+                    last_price=float(quote.last_price) if quote.last_price else 0.0,
+                    open=float(quote.open) if quote.open else 0.0,
+                    high=float(quote.highest) if quote.highest else 0.0,
+                    low=float(quote.lowest) if quote.lowest else 0.0,
+                    pre_close=float(quote.pre_close) if quote.pre_close else 0.0,
+                    upper_limit=float(quote.upper_limit) if quote.upper_limit else 0.0,
+                    lower_limit=float(quote.lower_limit) if quote.lower_limit else 0.0,
+                    volume=int(quote.volume) if quote.volume else 0,
+                    open_interest=int(quote.open_interest) if quote.open_interest else 0,
+                    datetime_str=str(quote.datetime) if quote.datetime else '',
+                )
+            
+            logger.info(f"批量获取 {len(result)}/{len(symbols)} 个合约行情")
+            return result
+            
+        except Exception as e:
+            logger.error(f"批量获取行情失败: {e}")
+            return {}
+    
     def get_klines(
         self, 
         symbol: str, 
@@ -427,18 +490,19 @@ class FuturesDataProvider:
             'ma20': sum(closes[-20:]) / 20,
         }
     
-    def get_analysis_context(self, symbol: str) -> Dict[str, Any]:
+    def get_analysis_context(self, symbol: str, cached_quote: FuturesQuote = None) -> Dict[str, Any]:
         """
         获取分析上下文（用于AI分析）
         
         Args:
             symbol: 合约代码
+            cached_quote: 已缓存的行情数据（可选，用于批量订阅后的复用）
             
         Returns:
             包含行情、K线、技术指标的上下文
         """
-        # 获取实时行情
-        quote = self.get_quote(symbol)
+        # 获取实时行情（优先使用缓存）
+        quote = cached_quote or self.get_quote(symbol)
         if not quote:
             return {'error': f'无法获取 {symbol} 行情数据'}
         
